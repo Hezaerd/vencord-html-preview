@@ -37,8 +37,8 @@
 .vc-html-preview-frame {
     display: block;
     width: 100%;
+    max-width: 100%;
     border: 0;
-    resize: vertical;
 
     /* Most HTML files assume a white page; this keeps them readable on dark themes */
     background: white;
@@ -47,7 +47,6 @@
 /* Fullscreen modal: fill the space Discord gives the code view */
 .vc-html-preview-frame-fill {
     height: 75vh;
-    resize: none;
 }
 
 /* Same gap Discord uses between the buttons in this toolbar */
@@ -58,13 +57,21 @@
 /*
  * While a page is rendered, the page scrolls inside the iframe, so Discord's containers must not scroll too.
  * Inline: drop the 500px cap so the iframe decides the height (up to the Max height setting).
- * Fullscreen: overflow: scroll always reserves a scrollbar track, which left a gap on the right.
+ * Discord's scroller also sets scrollbar-gutter: stable, which keeps an empty scrollbar track even with
+ * overflow: hidden. That track was the gap on the right.
  */
 [class*="textContainer_"]:has(.vc-html-preview-frame) {
     max-height: none !important;
     overflow: hidden !important;
+    scrollbar-gutter: auto !important;
+}
+
+/* Discord caps the preview at 50vw; a wide page may use the rest of the chat */
+[class*="container_"]:has(> [class*="textContainer_"] .vc-html-preview-frame) {
+    max-width: 100% !important;
 }
 
 [class*="modalTextContainer_"]:has(.vc-html-preview-frame) {
     overflow: hidden !important;
+    scrollbar-gutter: auto !important;
 }

@@ -90,6 +90,7 @@ function HtmlFrame({ source, fill }: { source: PreviewSource; fill?: boolean; })
     const [src, setSrc] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [height, setHeight] = useState(150);
+    const [width, setWidth] = useState<number | null>(null);
     const frameRef = useRef<HTMLIFrameElement>(null);
 
     useEffect(() => {
@@ -115,9 +116,16 @@ function HtmlFrame({ source, fill }: { source: PreviewSource; fill?: boolean; })
         const onMessage = (e: MessageEvent) => {
             if (e.source !== frameRef.current?.contentWindow) return;
 
-            const reported = e.data?.__vcHtmlPreviewHeight;
-            if (typeof reported === "number" && Number.isFinite(reported))
-                setHeight(Math.min(Math.max(reported, 40), maxHeight));
+            const size = e.data?.__vcHtmlPreviewSize;
+            const frame = frameRef.current;
+            if (!frame || !size || ![size.height, size.scrollWidth, size.clientWidth].every(Number.isFinite)) return;
+
+            setHeight(Math.min(Math.max(size.height, 40), maxHeight));
+
+            // Widen instead of scrolling sideways. Discord's layout caps the iframe at the room left in the chat
+            const overflow = size.scrollWidth - size.clientWidth;
+            if (overflow > 0)
+                setWidth(current => Math.max(current ?? 0, frame.offsetWidth + overflow));
         };
 
         window.addEventListener("message", onMessage);
@@ -136,7 +144,7 @@ function HtmlFrame({ source, fill }: { source: PreviewSource; fill?: boolean; })
             sandbox="allow-scripts"
             allow=""
             referrerPolicy="no-referrer"
-            style={fill ? undefined : { height }}
+            style={fill ? undefined : { height, width: width ?? undefined }}
         />
     );
 }

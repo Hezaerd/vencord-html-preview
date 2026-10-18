@@ -48,8 +48,22 @@ const COMMON_POLICY = [
     "sandbox allow-scripts",
 ];
 
-// Reports the content height so the iframe can grow with it. The parent only accepts a clamped number from this frame
-const HEIGHT_REPORTER = "<script>(()=>{const p=()=>parent.postMessage({__vcHtmlPreviewHeight:Math.ceil(document.documentElement.scrollHeight)},\"*\");addEventListener(\"load\",p);new ResizeObserver(p).observe(document.documentElement)})()</script>";
+// Runs inside the preview and reports how big the page wants to be, so the iframe can grow with it.
+// The parent only accepts these numbers from this frame and clamps them
+function reportSize() {
+    const post = () => {
+        const root = document.documentElement;
+        parent.postMessage({
+            __vcHtmlPreviewSize: { height: root.scrollHeight, scrollWidth: root.scrollWidth, clientWidth: root.clientWidth }
+        }, "*");
+    };
+    const observer = new ResizeObserver(post);
+    observer.observe(document.documentElement);
+    addEventListener("DOMContentLoaded", () => observer.observe(document.body));
+    addEventListener("load", post);
+}
+
+const SIZE_REPORTER = `<script>(${reportSize})()</script>`;
 
 interface PreviewDocument {
     html: string;
@@ -58,16 +72,16 @@ interface PreviewDocument {
 
 const documents = new Map<string, PreviewDocument>();
 
-function injectHeightReporter(html: string) {
+function injectSizeReporter(html: string) {
     // Keep the doctype first, otherwise the page would render in quirks mode
     const doctype = /^\s*<!doctype[^>]*>/i.exec(html);
-    if (!doctype) return HEIGHT_REPORTER + html;
-    return doctype[0] + HEIGHT_REPORTER + html.slice(doctype[0].length);
+    if (!doctype) return SIZE_REPORTER + html;
+    return doctype[0] + SIZE_REPORTER + html.slice(doctype[0].length);
 }
 
 function storeDocument(html: string, allowRemote: boolean) {
     const id = randomUUID();
-    documents.set(id, { html: injectHeightReporter(html), allowRemote });
+    documents.set(id, { html: injectSizeReporter(html), allowRemote });
 
     while (documents.size > MAX_DOCUMENTS)
         documents.delete(documents.keys().next().value!);

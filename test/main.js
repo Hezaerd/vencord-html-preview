@@ -79,6 +79,7 @@ fetch("https://${host}/fetch").then(x => r.fetch = "OK " + x.status, () => r.fet
 
 const SELF_NAV = "<!doctype html><script>setTimeout(() => location.href = \"https://nav.test/self-nav\", 200)</script>";
 const META_REFRESH = "<!doctype html><meta http-equiv=\"refresh\" content=\"0;url=https://nav.test/meta-refresh\">";
+const WIDE = "<!doctype html><body style=\"margin:0\"><div style=\"width:900px\">wide</div></body>";
 const LOOP = "<!doctype html><script>parent.postMessage({ loop: \"start\" }, \"*\"); setTimeout(() => { for (;;) {} }, 50)</script>";
 
 app.whenReady().then(async () => {
@@ -93,6 +94,7 @@ app.whenReady().then(async () => {
         online: native.registerHtml(null, probe("online.test"), true),
         selfNav: native.registerHtml(null, SELF_NAV, false),
         metaRefresh: native.registerHtml(null, META_REFRESH, false),
+        wide: native.registerHtml(null, WIDE, false),
         loop: native.registerHtml(null, LOOP, false),
     };
 
@@ -100,7 +102,7 @@ app.whenReady().then(async () => {
 <script nonce="${nonce}">
 window.SECRET = "discord-token";
 localStorage.setItem("token", "discord-token");
-window.results = { probes: {}, heights: {}, loopTicks: null };
+window.results = { probes: {}, sizes: {}, loopTicks: null };
 const frames = {};
 window.addFrame = (name, attrs) => {
     const f = document.createElement("iframe");
@@ -112,7 +114,7 @@ window.addFrame = (name, attrs) => {
 addEventListener("message", e => {
     const name = Object.keys(frames).find(n => frames[n].contentWindow === e.source);
     if (e.data?.probe) results.probes[name] = e.data.probe;
-    if (e.data?.__vcHtmlPreviewHeight) results.heights[name] = e.data.__vcHtmlPreviewHeight;
+    if (e.data?.__vcHtmlPreviewSize) results.sizes[name] = e.data.__vcHtmlPreviewSize;
     if (e.data?.loop === "start") {
         let ticks = 0;
         const iv = setInterval(() => ticks++, 10);
@@ -124,6 +126,7 @@ addFrame("online", { src: ${esc(urls.online)} });
 addFrame("srcdoc", { srcdoc: ${esc(probe("srcdoc.test"))} });
 addFrame("selfNav", { src: ${esc(urls.selfNav)} });
 addFrame("metaRefresh", { src: ${esc(urls.metaRefresh)} });
+addFrame("wide", { src: ${esc(urls.wide)} });
 </script></body>`;
 
     protocol.handle("https", req => {
@@ -140,7 +143,7 @@ addFrame("metaRefresh", { src: ${esc(urls.metaRefresh)} });
     await win.loadURL("https://discord.test/");
     await sleep(3000);
 
-    const { probes, heights } = await win.webContents.executeJavaScript("results");
+    const { probes, sizes } = await win.webContents.executeJavaScript("results");
     const offline = probes.offline ?? {};
 
     check("Discord's CSP lets the page frame previews", "offline" in probes, probes);
@@ -156,7 +159,8 @@ addFrame("metaRefresh", { src: ${esc(urls.metaRefresh)} });
     check("popups are blocked", popups.length === 0, popups);
     check("forms and top navigation are blocked", win.webContents.getURL() === "https://discord.test/" && !requests.some(u => /\/(form|top-nav)$/.test(u)), requests);
     check("previews cannot navigate themselves away", !requests.some(u => u.includes("nav.test")), requests);
-    check("preview reports its height", heights.offline > 0, heights);
+    check("preview reports its height", sizes.offline?.height > 0, sizes.offline);
+    check("preview reports sideways overflow so the iframe can widen", sizes.wide?.scrollWidth >= 900 && sizes.wide.scrollWidth > sizes.wide.clientWidth, sizes.wide);
     check("naive srcdoc frame cannot run scripts (why the plugin uses its own scheme)", !("srcdoc" in probes), probes.srcdoc);
 
     // Last, because it freezes the process shared by all previews. A frozen parent would get ~0 ticks; Windows timer granularity caps a healthy one around 95-150
