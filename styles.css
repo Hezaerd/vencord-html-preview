@@ -1,0 +1,45 @@
+.vc-html-preview {
+    max-width: 720px;
+    margin-top: 4px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--background-secondary);
+}
+
+.vc-html-preview-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+}
+
+.vc-html-preview-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--header-primary);
+    font-weight: 600;
+}
+
+.vc-html-preview-badge {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.vc-html-preview-error {
+    padding: 6px 8px;
+    color: var(--text-danger);
+}
+
+.vc-html-preview-frame {
+    display: block;
+    width: 100%;
+    border: 0;
+    resize: vertical;
+
+    /* Most HTML files assume a white page; this keeps them readable on dark themes */
+    background: white;
+}
