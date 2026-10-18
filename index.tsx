@@ -8,16 +8,23 @@ import "./styles.css";
 
 import { definePluginSettings } from "@api/Settings";
 import { Button } from "@components/Button";
+import ErrorBoundary from "@components/ErrorBoundary";
+import { classes } from "@utils/misc";
+import { useForceUpdater } from "@utils/react";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
-import { Message } from "@vencord/discord-types";
-import { useEffect, useRef, useState } from "@webpack/common";
+import { findCssClassesLazy } from "@webpack";
+import { Clickable, Tooltip, useEffect, useRef, useState } from "@webpack/common";
+import { ReactNode } from "react";
 
 const Native = VencordNative.pluginHelpers.HtmlPreview as PluginNative<typeof import("./native")>;
+
+// Discord's plaintext attachment preview, so the toggle looks like the buttons next to it
+const PreviewClasses = findCssClassesLazy("languageIcon", "openFullPreviewSection");
 
 const settings = definePluginSettings({
     autoRender: {
         type: OptionType.BOOLEAN,
-        description: "Render previews immediately instead of waiting for you to click Run",
+        description: "Show HTML attachments and code blocks rendered by default instead of as code",
         default: false,
     },
     allowRemoteResources: {
@@ -27,7 +34,7 @@ const settings = definePluginSettings({
     },
     maxHeight: {
         type: OptionType.NUMBER,
-        description: "Maximum preview height in pixels",
+        description: "Maximum inline preview height in pixels",
         default: 600,
     },
     maxFileSizeKb: {
@@ -41,36 +48,55 @@ type PreviewSource =
     | { kind: "code"; html: string; label: string; }
     | { kind: "attachment"; url: string; label: string; };
 
-const HTML_CODE_BLOCK = /```html\n([\s\S]*?)```/gi;
-
-function getSources(message: Message): PreviewSource[] {
-    const sources: PreviewSource[] = [];
-
-    for (const attachment of message.attachments ?? []) {
-        if (/\.html?$/i.test(attachment.filename) || attachment.content_type?.startsWith("text/html"))
-            sources.push({ kind: "attachment", url: attachment.url, label: attachment.filename });
-    }
-
-    for (const [, html] of message.content?.matchAll(HTML_CODE_BLOCK) ?? []) {
-        if (html.trim()) sources.push({ kind: "code", html, label: "HTML code block" });
-    }
-
-    return sources;
+// Props of Discord's inline preview and of its fullscreen modal (the modal has transitionState instead of setExpanded)
+interface PlaintextPreviewProps {
+    url: string;
+    fileName: string;
+    expanded?: boolean;
+    setExpanded?(expanded: boolean): void;
+    transitionState?: unknown;
 }
 
-function HtmlPreview({ source }: { source: PreviewSource; }) {
-    const { autoRender, allowRemoteResources, maxHeight, maxFileSizeKb } = settings.use(["autoRender", "allowRemoteResources", "maxHeight", "maxFileSizeKb"]);
+const HTML_LANGUAGES = new Set(["html", "htm", "xhtml"]);
+const HTML_CODE_BLOCK = /```html\n([\s\S]*?)```/gi;
 
-    const [running, setRunning] = useState(autoRender);
+const isHtmlLanguage = (language: unknown) => typeof language === "string" && HTML_LANGUAGES.has(language.toLowerCase());
+
+// Rendered/code mode per attachment URL, shared by the inline preview and its fullscreen modal
+const renderModes = new Map<string, boolean>();
+const renderModeListeners = new Set<() => void>();
+
+const isRendering = (url: string) => renderModes.get(url) ?? settings.store.autoRender;
+
+function setRendering(url: string, rendering: boolean) {
+    renderModes.set(url, rendering);
+    renderModeListeners.forEach(listener => listener());
+}
+
+function useRendering(url: string) {
+    const forceUpdate = useForceUpdater();
+
+    useEffect(() => {
+        renderModeListeners.add(forceUpdate);
+        return () => void renderModeListeners.delete(forceUpdate);
+    }, []);
+
+    return isRendering(url);
+}
+
+function HtmlFrame({ source, fill }: { source: PreviewSource; fill?: boolean; }) {
+    const { allowRemoteResources, maxHeight, maxFileSizeKb } = settings.use(["allowRemoteResources", "maxHeight", "maxFileSizeKb"]);
+
     const [src, setSrc] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [height, setHeight] = useState(150);
     const frameRef = useRef<HTMLIFrameElement>(null);
 
     useEffect(() => {
-        if (!running) return;
-
         let cancelled = false;
+        setSrc(null);
+        setError(null);
+
         const request = source.kind === "code"
             ? Native.registerHtml(source.html, allowRemoteResources)
             : Native.registerAttachment(source.url, allowRemoteResources, maxFileSizeKb * 1024);
@@ -81,10 +107,10 @@ function HtmlPreview({ source }: { source: PreviewSource; }) {
         );
 
         return () => { cancelled = true; };
-    }, [running, allowRemoteResources]);
+    }, [allowRemoteResources]);
 
     useEffect(() => {
-        if (!src) return;
+        if (!src || fill) return;
 
         const onMessage = (e: MessageEvent) => {
             if (e.source !== frameRef.current?.contentWindow) return;
@@ -96,52 +122,156 @@ function HtmlPreview({ source }: { source: PreviewSource; }) {
 
         window.addEventListener("message", onMessage);
         return () => window.removeEventListener("message", onMessage);
-    }, [src, maxHeight]);
+    }, [src, fill, maxHeight]);
+
+    if (error) return <div className="vc-html-preview-error">{error}</div>;
+    if (!src) return null;
+
+    return (
+        <iframe
+            ref={frameRef}
+            className={classes("vc-html-preview-frame", fill && "vc-html-preview-frame-fill")}
+            title={source.label}
+            src={src}
+            sandbox="allow-scripts"
+            allow=""
+            referrerPolicy="no-referrer"
+            style={fill ? undefined : { height }}
+        />
+    );
+}
+
+function EyeIcon() {
+    return (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5ZM12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10Zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" />
+        </svg>
+    );
+}
+
+function LinesIcon() {
+    return (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M4 5h16v2H4V5Zm0 4h16v2H4V9Zm0 4h16v2H4v-2Zm0 4h10v2H4v-2Z" />
+        </svg>
+    );
+}
+
+function RenderToggle({ preview }: { preview: PlaintextPreviewProps; }) {
+    const rendering = useRendering(preview.url);
+    const label = rendering ? "Show code" : "Render HTML (sandboxed)";
 
     const toggle = () => {
-        setRunning(!running);
-        setSrc(null);
-        setError(null);
+        setRendering(preview.url, !rendering);
+        // A collapsed inline preview is only a few lines tall, too small for a page
+        if (!rendering) preview.setExpanded?.(true);
     };
+
+    return (
+        <Tooltip text={label}>
+            {tooltipProps => (
+                <Clickable
+                    {...tooltipProps}
+                    className={classes(PreviewClasses.languageIcon, "vc-html-preview-toggle")}
+                    aria-label={label}
+                    aria-pressed={rendering}
+                    onClick={toggle}
+                >
+                    {rendering ? <LinesIcon /> : <EyeIcon />}
+                </Clickable>
+            )}
+        </Tooltip>
+    );
+}
+
+function CodeOrHtml({ preview, code }: { preview: PlaintextPreviewProps; code: ReactNode; }) {
+    const rendering = useRendering(preview.url);
+    const isModal = preview.transitionState != null;
+
+    useEffect(() => {
+        if (rendering && !isModal && !preview.expanded) preview.setExpanded?.(true);
+    }, []);
+
+    if (!rendering) return code;
+
+    return (
+        <HtmlFrame
+            source={{ kind: "attachment", url: preview.url, label: preview.fileName }}
+            fill={isModal}
+        />
+    );
+}
+
+function CodeBlockPreview({ html }: { html: string; }) {
+    const { autoRender, allowRemoteResources } = settings.use(["autoRender", "allowRemoteResources"]);
+    const [running, setRunning] = useState(autoRender);
 
     return (
         <div className="vc-html-preview">
             <div className="vc-html-preview-header">
-                <span className="vc-html-preview-label">{source.label}</span>
+                <span className="vc-html-preview-label">HTML code block</span>
                 <span className="vc-html-preview-badge">
                     {allowRemoteResources ? "sandboxed · network on" : "sandboxed · offline"}
                 </span>
-                <Button size="small" variant={running ? "secondary" : "primary"} onClick={toggle}>
+                <Button size="small" variant={running ? "secondary" : "primary"} onClick={() => setRunning(!running)}>
                     {running ? "Stop" : "Run"}
                 </Button>
             </div>
-            {error && <div className="vc-html-preview-error">{error}</div>}
-            {running && src && (
-                <iframe
-                    ref={frameRef}
-                    className="vc-html-preview-frame"
-                    title={source.label}
-                    src={src}
-                    sandbox="allow-scripts"
-                    allow=""
-                    referrerPolicy="no-referrer"
-                    style={{ height }}
-                />
-            )}
+            {running && <HtmlFrame source={{ kind: "code", html, label: "HTML code block" }} />}
         </div>
     );
 }
 
 export default definePlugin({
     name: "HtmlPreview",
-    description: "Renders .html attachments and ```html code blocks in chat, inside a sandboxed iframe that is offline by default",
+    description: "Adds a toggle to Discord's preview of .html attachments that renders them in a sandboxed, offline iframe. Also previews ```html code blocks",
     authors: [{ name: "hezaerd", id: 0n }],
     settings,
 
-    renderMessageAccessory({ message }) {
-        const sources = getSources(message);
-        if (!sources.length) return null;
+    patches: [
+        {
+            // Discord's plaintext attachment preview, inline and in the fullscreen modal
+            find: '"PlaintextFileMarkdownPreview"',
+            replacement: [
+                {
+                    // The code view: swap in the rendered page when the toggle is on
+                    match: /\(0,\i\.jsx\)\(\i,\{text:\i\+\i,language:(\i),wordWrap:\i\}\)/g,
+                    replace: "$self.renderCodeOrHtml(arguments[0],$1,$&)"
+                },
+                {
+                    // The language picker button: put the toggle right before it
+                    match: /\(0,\i\.jsx\)\(\i,\{language:(\i),setLanguage:\i,align:"(?:top|bottom)"\}\)/g,
+                    replace: "$self.renderToggle(arguments[0],$1),$&"
+                }
+            ]
+        }
+    ],
 
-        return sources.map((source, i) => <HtmlPreview key={`${message.id}-${i}`} source={source} />);
+    renderCodeOrHtml(preview: PlaintextPreviewProps, language: string, code: ReactNode) {
+        if (!isHtmlLanguage(language)) return code;
+
+        return (
+            <ErrorBoundary fallback={() => code}>
+                <CodeOrHtml preview={preview} code={code} />
+            </ErrorBoundary>
+        );
+    },
+
+    renderToggle(preview: PlaintextPreviewProps, language: string) {
+        if (!isHtmlLanguage(language)) return null;
+
+        return (
+            <ErrorBoundary noop>
+                <RenderToggle preview={preview} />
+            </ErrorBoundary>
+        );
+    },
+
+    renderMessageAccessory({ message }) {
+        const blocks = [...message.content?.matchAll(HTML_CODE_BLOCK) ?? []]
+            .map(([, html]) => html)
+            .filter(html => html.trim());
+
+        return blocks.map((html, i) => <CodeBlockPreview key={`${message.id}-${i}`} html={html} />);
     },
 });

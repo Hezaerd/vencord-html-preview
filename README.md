@@ -25,13 +25,15 @@ Works on Discord desktop and Vesktop, not on the browser extension or userscript
 
 ## Usage
 
-Messages with an `.html` attachment or a ` ```html ` code block get a preview card below them. Click **Run** to render it and **Stop** to unload it.
+`.html` attachments: Discord already previews these as code. The plugin adds an eye button to that preview's toolbar, next to the `<>` language picker. Click it to render the page in place of the code, and click again to go back to the code. It works in the fullscreen view too, and the fullscreen view opens in whichever mode the inline preview is in. The button only shows while the preview's language is HTML.
+
+` ```html ` code blocks: these get a preview card below the message. Click **Run** to render the block and **Stop** to unload it.
 
 | Setting | Default | |
 |---|---|---|
-| Auto render | off | Render previews without clicking Run |
+| Auto render | off | Show HTML rendered by default instead of as code |
 | Allow remote resources | off | Let previews load scripts, styles and images and make requests over https, which CDN libraries like Chart.js or Tailwind need. Hosts the HTML contacts will see your IP |
-| Max height | 600 | Preview height cap in pixels. Previews grow to fit their content up to this height |
+| Max height | 600 | Height cap for inline previews in pixels. Previews grow to fit their content up to this height |
 | Max file size | 2048 KB | Largest attachment that gets downloaded for previewing |
 
 ## How it stays isolated
@@ -60,9 +62,10 @@ The one message a preview can send to Discord is its height, which is accepted o
 ## Limits
 
 - A preview can draw anything, including a fake login screen. In offline mode, anything typed into it has nowhere to go. With remote resources on, it could be sent out.
-- All previews share one process, so a preview stuck in a loop freezes the other previews (not Discord). Click Stop on it.
+- All previews share one process, so a preview stuck in a loop freezes the other previews (not Discord). Switch it back to code.
 - A preview can still navigate itself to hosts on Discord's own `frame-src` allowlist, such as YouTube embeds or `https://localhost`. That request reveals your IP but carries no Discord session.
-- Previews appear below the message instead of replacing the code block.
+- Code block previews appear below the message instead of replacing the code block.
+- The attachment toggle patches Discord's preview code. A Discord update can break the patch; Vencord then logs a warning and the plain code preview keeps working.
 - Using any client mod is against Discord's Terms of Service.
 
 ## Security test
