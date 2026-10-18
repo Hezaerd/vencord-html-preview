@@ -49,3 +49,22 @@
     height: 75vh;
     resize: none;
 }
+
+/* Same gap Discord uses between the buttons in this toolbar */
+.vc-html-preview-toggle {
+    margin-inline-end: var(--space-16, 16px);
+}
+
+/*
+ * While a page is rendered, the page scrolls inside the iframe, so Discord's containers must not scroll too.
+ * Inline: drop the 500px cap so the iframe decides the height (up to the Max height setting).
+ * Fullscreen: overflow: scroll always reserves a scrollbar track, which left a gap on the right.
+ */
+[class*="textContainer_"]:has(.vc-html-preview-frame) {
+    max-height: none !important;
+    overflow: hidden !important;
+}
+
+[class*="modalTextContainer_"]:has(.vc-html-preview-frame) {
+    overflow: hidden !important;
+}
