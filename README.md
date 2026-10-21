@@ -56,6 +56,7 @@ The iframe also has `sandbox="allow-scripts"`. As a result:
 - Discord's own `frame-src` blocks the preview from navigating itself to another site.
 - Previews run in a different process from Discord, so an infinite loop in one doesn't freeze the client.
 - Attachments are downloaded by the main process, only from `cdn.discordapp.com` and `media.discordapp.net`, without following redirects, and only up to the size limit.
+- Downloads stop as soon as the streamed response exceeds the size limit, even without an accurate content length, and time out after 15 seconds.
 
 The one message a preview can send to Discord is its height, which is accepted only from that iframe and clamped.
 
@@ -70,7 +71,7 @@ The one message a preview can send to Discord is its height, which is accepted o
 
 ## Security test
 
-`test/` contains an Electron test. It loads a fake discord.com page with Discord's live CSP (patched the same way Vencord patches it), embeds previews served by the plugin's real `native.ts`, and runs hostile HTML that tries to break out. It needs Node.js 20+ and downloads Electron and esbuild through `npx`.
+`test/` checks preview refreshes with React's test renderer and download limits with streamed responses, then runs an Electron sandbox test. It loads a fake discord.com page with Discord's live CSP (patched the same way Vencord patches it), embeds previews served by the plugin's real `native.ts`, and runs hostile HTML that tries to break out. It needs Node.js 20+ and downloads Electron, esbuild, React and its test renderer through `npx`.
 
 ```sh
 cd test

@@ -3,6 +3,6 @@
     "private": true,
     "description": "Security test for the HtmlPreview Vencord plugin",
     "scripts": {
-        "test": "npx --yes -p esbuild@0.28 -p electron@44 node run.mjs"
+        "test": "npx --yes -p esbuild@0.28 -p electron@44 -p react@18.3.1 -p react-test-renderer@18.3.1 node run.mjs"
     }
 }

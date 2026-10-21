@@ -15,6 +15,7 @@ const SCHEME = "vc-html-preview";
 
 const MAX_DOCUMENTS = 64;
 const HARD_SIZE_LIMIT = 10 * 1024 * 1024;
+const DOWNLOAD_TIMEOUT_MS = 15_000;
 const ATTACHMENT_HOSTS = new Set(["cdn.discordapp.com", "media.discordapp.net"]);
 
 // Lets Discord's page embed our scheme in an iframe. Navigating the frame anywhere else stays blocked by Discord's frame-src
@@ -126,16 +127,41 @@ export async function registerAttachment(_: IpcMainInvokeEvent, url: string, all
     if (parsed.protocol !== "https:" || !ATTACHMENT_HOSTS.has(parsed.hostname))
         throw new Error("Only Discord attachment URLs can be previewed");
 
-    const limit = Math.min(Number(maxBytes) || 0, HARD_SIZE_LIMIT);
+    if (!Number.isFinite(maxBytes) || maxBytes <= 0)
+        throw new Error("Preview size limit must be a positive finite number");
 
-    const res = await fetch(parsed, { redirect: "error" });
-    if (!res.ok) throw new Error(`Failed to download attachment (HTTP ${res.status})`);
+    const limit = Math.min(maxBytes, HARD_SIZE_LIMIT);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(new Error("Attachment download timed out")), DOWNLOAD_TIMEOUT_MS);
 
-    const declaredLength = Number(res.headers.get("content-length"));
-    if (declaredLength > limit) throw new Error("Attachment is larger than the preview size limit");
+    try {
+        const res = await fetch(parsed, { redirect: "error", signal: controller.signal });
+        if (!res.ok) throw new Error(`Failed to download attachment (HTTP ${res.status})`);
 
-    const body = await res.arrayBuffer();
-    if (body.byteLength > limit) throw new Error("Attachment is larger than the preview size limit");
+        const declaredLength = Number(res.headers.get("content-length"));
+        if (declaredLength > limit) throw new Error("Attachment is larger than the preview size limit");
+        if (!res.body) throw new Error("Attachment response has no body");
 
-    return storeDocument(new TextDecoder().decode(body), allowRemote === true);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let bytes = 0;
+        let html = "";
+
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                bytes += value.byteLength;
+                if (bytes > limit) throw new Error("Attachment is larger than the preview size limit");
+                html += decoder.decode(value, { stream: true });
+            }
+        } finally {
+            reader.releaseLock();
+        }
+
+        return storeDocument(html + decoder.decode(), allowRemote === true);
+    } finally {
+        clearTimeout(timeout);
+        controller.abort();
+    }
 }

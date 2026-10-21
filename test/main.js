@@ -83,6 +83,8 @@ const WIDE = "<!doctype html><body style=\"margin:0\"><div style=\"width:900px\"
 const LOOP = "<!doctype html><script>parent.postMessage({ loop: \"start\" }, \"*\"); setTimeout(() => { for (;;) {} }, 50)</script>";
 
 app.whenReady().then(async () => {
+    await require("./downloads")(native);
+
     const res = await fetch("https://discord.com/app", { method: "HEAD" });
     const rawCsp = res.headers.get("content-security-policy");
     if (!rawCsp) throw new Error("discord.com did not return a CSP header");

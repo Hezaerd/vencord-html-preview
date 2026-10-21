@@ -92,15 +92,19 @@ function HtmlFrame({ source, fill }: { source: PreviewSource; fill?: boolean; })
     const [height, setHeight] = useState(150);
     const [width, setWidth] = useState<number | null>(null);
     const frameRef = useRef<HTMLIFrameElement>(null);
+    const { kind } = source;
+    const content = source.kind === "code" ? source.html : source.url;
 
     useEffect(() => {
         let cancelled = false;
         setSrc(null);
         setError(null);
+        setHeight(150);
+        setWidth(null);
 
-        const request = source.kind === "code"
-            ? Native.registerHtml(source.html, allowRemoteResources)
-            : Native.registerAttachment(source.url, allowRemoteResources, maxFileSizeKb * 1024);
+        const request = kind === "code"
+            ? Native.registerHtml(content, allowRemoteResources)
+            : Native.registerAttachment(content, allowRemoteResources, maxFileSizeKb * 1024);
 
         request.then(
             url => !cancelled && setSrc(url),
@@ -108,7 +112,7 @@ function HtmlFrame({ source, fill }: { source: PreviewSource; fill?: boolean; })
         );
 
         return () => { cancelled = true; };
-    }, [allowRemoteResources]);
+    }, [kind, content, allowRemoteResources, maxFileSizeKb]);
 
     useEffect(() => {
         if (!src || fill) return;

@@ -15,6 +15,7 @@ import { fileURLToPath } from "url";
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = mkdtempSync(join(tmpdir(), "vc-html-preview-test-"));
 const bundle = join(outDir, "native.js");
+const rendererBundle = join(outDir, "renderer.js");
 
 const run = (cmd, args, env) => spawnSync(cmd, args, { stdio: "inherit", shell: true, env: { ...process.env, ...env } }).status;
 
@@ -26,6 +27,16 @@ try {
         `--outfile=${JSON.stringify(bundle)}`,
     ]);
     if (built !== 0) process.exit(built ?? 1);
+
+    const rendererBuilt = run("esbuild", [
+        JSON.stringify(join(here, "..", "index.tsx")),
+        "--bundle", "--platform=node", "--format=cjs", "--external:@*", "--external:react", "--loader:.css=empty", "--log-level=warning",
+        `--outfile=${JSON.stringify(rendererBundle)}`,
+    ]);
+    if (rendererBuilt !== 0) process.exit(rendererBuilt ?? 1);
+
+    const rendererTest = run("node", [JSON.stringify(join(here, "renderer.mjs"))], { HTML_PREVIEW_RENDERER: rendererBundle });
+    if (rendererTest !== 0) process.exit(rendererTest ?? 1);
 
     // Electron would run as plain Node if this is inherited from an Electron-based terminal
     delete process.env.ELECTRON_RUN_AS_NODE;
